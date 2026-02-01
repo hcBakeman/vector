@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OP VECTOR-X Version 0.1</title>
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --accent: #00ff41; --gold: #fbbf24; --text: #c9d1d9; --border: #30363d; --danger: #ef4444; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        aside { width: 340px; background: #010409; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; z-index: 10; box-sizing: border-box; overflow-y: auto; }
+        main { flex: 1; position: relative; background: #000; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; cursor: crosshair; outline: none; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        label { font-size: 0.65rem; color: #8b949e; font-weight: bold; display: block; margin-bottom: 8px; text-transform: uppercase; }
+        input[type="number"], .name-input { width: 100%; background: #0d1117; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; transition: 0.2s; }
+        .btn-reset { background: var(--danger); color: #fff; font-size: 0.7rem; }
+        #poly-list { margin-top: 5px; flex-grow: 1; }
+        .poly-item { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer; position: relative; }
+        .poly-item.active { border-color: var(--accent); background: rgba(0, 255, 65, 0.08); }
+        .name-input { font-weight: bold; font-size: 0.85rem; border: none; background: transparent; color: #fff; width: 100%; outline: none; }
+        .hud { position: absolute; bottom: 20px; right: 20px; background: rgba(13, 20, 30, 0.9); border: 1px solid var(--accent); padding: 12px; border-radius: 4px; pointer-events: none; font-family: monospace; font-size: 0.8rem; }
+        .switch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 0.7rem; color: #8b949e; cursor: pointer; user-select: none; }
+        .reset-label-link { font-size: 0.6rem; color: var(--gold); text-decoration: underline; cursor: pointer; margin-top: 8px; display: inline-block; }
+        
+        .btn-help-toggle { background: rgba(0, 255, 65, 0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 0.75rem; margin-bottom: 20px; letter-spacing: 1px; }
+        .btn-help-toggle:hover { background: var(--accent); color: #000; }
+        
+        #help-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: var(--card); border: 2px solid var(--accent); padding: 30px; border-radius: 12px; z-index: 100; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+        .instruction-step { font-size: 0.8rem; color: var(--text); margin-bottom: 15px; line-height: 1.4; border-left: 2px solid var(--accent); padding-left: 12px; }
+        kbd { background: #333; padding: 2px 4px; border-radius: 3px; font-size: 0.7rem; color: var(--accent); border: 1px solid #444; }
+    </style>
+</head>
+<body>
+    <div id="help-modal">
+        <h3 style="color: var(--accent); margin-top: 0;">OP VECTOR-X PROTOCOLS</h3>
+        <div class="instruction-step"><strong>1. CREATE:</strong> <kbd>DBL-CLICK</kbd> on empty space to start.</div>
+        <div class="instruction-step"><strong>2. EDIT:</strong> <kbd>DRAG</kbd> any corner to reshape. <kbd>DBL-CLICK</kbd> an edge to add a corner.</div>
+        <div class="instruction-step"><strong>3. MOVE:</strong> <kbd>DRAG</kbd> polygon centers. Shared corners stay "Glued".</div>
+        <div class="instruction-step"><strong>4. VALUES:</strong> <kbd>DRAG</kbd> any measurement value to move its position.</div>
+        <div class="instruction-step"><strong>5. REMOVE:</strong> <kbd>CTRL + CLICK</kbd> a corner to delete it. Press <kbd>DEL</kbd> to delete active polygon.</div>
+        <button onclick="toggleHelp()">CLOSE HELP [X]</button>
+    </div>
+
+    <aside>
+        <h2 style="color: var(--accent); margin: 0 0 5px 0;">OP VECTOR-X 0.1</h2>
+        <button class="btn-help-toggle" onclick="toggleHelp()">NEED HELP?</button>
+        
+        <div class="card">
+            <label>Settings</label>
+            <div style="margin-bottom: 12px;">
+                <label>GRID SIZE (mm)</label>
+                <input type="number" id="grid-size" value="50" onchange="render()">
+            </div>
+            <label class="switch-row"><input type="checkbox" id="osnap-enabled" onchange="saveState()"><span>OSNAP (MAGNET)</span></label>
+            <label class="switch-row"><input type="checkbox" id="glue-enabled" onchange="saveState()"><span>STICKY JOINTS (GLUE)</span></label>
+            <label class="switch-row"><input type="checkbox" id="snap-grid" onchange="render()"><span>SNAP TO GRID</span></label>
+            <button class="btn-reset" onclick="resetProject()">RESET PROJECT</button>
+        </div>
+        <label>Polygon Inventory</label>
+        <div id="poly-list"></div>
+    </aside>
+    <main>
+        <canvas id="view" tabindex="0"></canvas>
+        <div class="hud">
+            <div id="hud-zoom" style="margin-bottom: 5px;">ZOOM: 100%</div>
+            <div id="hud-area" style="color: var(--accent);">TOTAL AREA: 0.000 m²</div>
+        </div>
+    </main>
+<script>
+    const canvas = document.getElementById('view');
+    const ctx = canvas.getContext('2d');
+    const listEl = document.getElementById('poly-list');
+
+    let polygons = []; 
+    let activeIdx = -1;
+    let scale = 1.0, offset = { x: 0, y: 0 };
+    let draggedVertices = [], draggedLabel = null, isDragging = false, isPanning = false, lastMouse = { x: 0, y: 0 }, snapPreview = null;
+    let labelHitboxes = [];
+
+    // --- SHARED STATE LOGIC ---
+    function saveState() {
+        const state = {
+            p: polygons,
+            g: document.getElementById('grid-size').value,
+            o: document.getElementById('osnap-enabled').checked,
+            l: document.getElementById('glue-enabled').checked,
+            s: document.getElementById('snap-grid').checked
+        };
+        const encoded = btoa(JSON.stringify(state));
+        window.history.replaceState(null, '', '#' + encoded);
+    }
+
+    function loadState() {
+        if (!window.location.hash) return;
+        try {
+            const decoded = JSON.parse(atob(window.location.hash.substring(1)));
+            polygons = decoded.p || [];
+            document.getElementById('grid-size').value = decoded.g || 50;
+            document.getElementById('osnap-enabled').checked = decoded.o || false;
+            document.getElementById('glue-enabled').checked = decoded.l || false;
+            document.getElementById('snap-grid').checked = decoded.s || false;
+        } catch(e) { console.error("Load failed", e); }
+    }
+
+    const getMousePos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        return { x: (e.clientX - r.left - offset.x) / scale, y: (e.clientY - r.top - offset.y) / scale };
+    };
+
+    function toggleHelp() {
+        const modal = document.getElementById('help-modal');
+        modal.style.display = (modal.style.display === 'block') ? 'none' : 'block';
+    }
+
+    const Titan = {
+        calcArea: (pts) => {
+            if (pts.length < 3) return 0;
+            let a = 0;
+            for (let i = 0; i < pts.length; i++) {
+                let j = (i + 1) % pts.length;
+                a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+            }
+            return Math.abs(a / 2) / 1000000;
+        },
+        getCenter: (pts) => {
+            if (pts.length === 0) return {x:0, y:0};
+            let x = 0, y = 0; pts.forEach(p => { x += p.x; y += p.y; });
+            return { x: x / pts.length, y: y / pts.length };
+        },
+        getAngleData: (prev, p, next, pts) => {
+            let start = Math.atan2(prev.y - p.y, prev.x - p.x), end = Math.atan2(next.y - p.y, next.x - p.x);
+            let sweep = end - start;
+            while (sweep < -Math.PI) sweep += Math.PI * 2;
+            while (sweep > Math.PI) sweep -= Math.PI * 2;
+            let mid = start + sweep / 2;
+            if (!Titan.isPointInPoly(p.x + Math.cos(mid) * (10 / scale), p.y + Math.sin(mid) * (10 / scale), pts)) sweep = (sweep > 0) ? (sweep - Math.PI * 2) : (sweep + Math.PI * 2);
+            return { start, sweep };
+        },
+        isPointInPoly: (x, y, pts) => {
+            if(pts.length < 3) return false;
+            let inside = false;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+                if (((pts[i].y > y) != (pts[j].y > y)) && (x < (pts[j].x - pts[i].x) * (y - pts[i].y) / (pts[j].y - pts[i].y) + pts[i].x)) inside = !inside;
+            }
+            return inside;
+        },
+        distToSegment: (p, v, w) => {
+            const l2 = Math.pow(v.x - w.x, 2) + Math.pow(v.y - w.y, 2);
+            if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+            let t = Math.max(0, Math.min(1, ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2));
+            return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+        }
+    };
+
+    canvas.addEventListener('mousedown', e => {
+        if (e.target.tagName === 'INPUT') return; 
+        const m = getMousePos(e); lastMouse = { x: e.clientX, y: e.clientY };
+        const hit = 15 / scale;
+        let found = false; draggedVertices = []; draggedLabel = null;
+        const isCreating = (activeIdx !== -1 && polygons[activeIdx].pts.length < 3);
+
+        if (e.ctrlKey) {
+            for(let i=0; i<polygons.length; i++) {
+                const poly = polygons[i];
+                for(let j=0; j<poly.pts.length; j++) {
+                    if(Math.hypot(poly.pts[j].x - m.x, poly.pts[j].y - m.y) < hit) {
+                        if (poly.pts.length > 3) { poly.pts.splice(j, 1); render(); saveState(); }
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (isCreating) {
+            const activePoly = polygons[activeIdx];
+            for (let p of activePoly.pts) {
+                if (Math.hypot(p.x - m.x, p.y - m.y) < hit) {
+                    draggedVertices.push(p); found = true; break;
+                }
+            }
+        } else {
+            for (let hb of labelHitboxes) {
+                if (m.x > hb.x && m.x < hb.x + hb.w && m.y > hb.y && m.y < hb.y + hb.h) {
+                    draggedLabel = hb; found = true; activeIdx = hb.polyIdx; break;
+                }
+            }
+            if (!found) {
+                for(let i=polygons.length-1; i>=0; i--) {
+                    const poly = polygons[i];
+                    let hitPt = null;
+                    for(let p of poly.pts) {
+                        if(Math.hypot(p.x-m.x, p.y-m.y) < hit) { hitPt = p; break; }
+                    }
+                    if(hitPt) {
+                        activeIdx = i; draggedVertices.push(hitPt); found = true;
+                        if(document.getElementById('glue-enabled').checked) {
+                            polygons.forEach(p_other => p_other.pts.forEach(op => {
+                                if(op !== hitPt && Math.hypot(op.x - hitPt.x, op.y - hitPt.y) < 0.1) {
+                                    if(!draggedVertices.includes(op)) draggedVertices.push(op);
+                                }
+                            }));
+                        }
+                    } else if(Titan.isPointInPoly(m.x, m.y, poly.pts)) {
+                        activeIdx = i; found = true;
+                        draggedVertices = [...poly.pts];
+                        if(document.getElementById('glue-enabled').checked) {
+                            polygons.forEach((p_other, pIdx) => {
+                                if(pIdx === activeIdx) return;
+                                p_other.pts.forEach(op => {
+                                    poly.pts.forEach(myp => {
+                                        if(Math.hypot(op.x - myp.x, op.y - myp.y) < 0.1) {
+                                            if(!draggedVertices.includes(op)) draggedVertices.push(op);
+                                        }
+                                    });
+                                });
+                            });
+                        }
+                    }
+                    if(found) break;
+                }
+            }
+        }
+        if (found) { isDragging = true; render(); } else { isPanning = true; }
+        renderCanvasOnly();
+    });
+
+    canvas.addEventListener('mousemove', e => {
+        if (isPanning) {
+            offset.x += (e.clientX - lastMouse.x); offset.y += (e.clientY - lastMouse.y);
+            lastMouse = { x: e.clientX, y: e.clientY }; renderCanvasOnly();
+        } else if (isDragging) {
+            const curM = getMousePos(e), prevM = getMousePos({clientX: lastMouse.x, clientY: lastMouse.y});
+            const dx = curM.x - prevM.x, dy = curM.y - prevM.y;
+            if (draggedLabel) {
+                const poly = polygons[draggedLabel.polyIdx];
+                if (draggedLabel.type === 'dim') {
+                    if(!poly.dimOffsets) poly.dimOffsets = {};
+                    const off = poly.dimOffsets[draggedLabel.ptIdx] || {x:0, y:0};
+                    poly.dimOffsets[draggedLabel.ptIdx] = { x: off.x + dx, y: off.y + dy };
+                } else {
+                    if(!poly.angOffsets) poly.angOffsets = {};
+                    const off = poly.angOffsets[draggedLabel.ptIdx] || {x:0, y:0};
+                    poly.angOffsets[draggedLabel.ptIdx] = { x: off.x + dx, y: off.y + dy };
+                }
+            } else {
+                draggedVertices.forEach(p => { p.x += dx; p.y += dy; });
+            }
+            snapPreview = null;
+            if(!draggedLabel && document.getElementById('osnap-enabled').checked) {
+                const thresh = 25 / scale;
+                outer: for(let poly of polygons) {
+                    if (poly === polygons[activeIdx]) continue; 
+                    for(let p of poly.pts) {
+                        for(let dv of draggedVertices) {
+                            if(Math.hypot(dv.x-p.x, dv.y-p.y) < thresh) { snapPreview = {target: p, mover: dv}; break outer; }
+                        }
+                    }
+                }
+            }
+            lastMouse = { x: e.clientX, y: e.clientY }; renderCanvasOnly();
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        if(isDragging) {
+            if(snapPreview && !draggedLabel) {
+                const dx = snapPreview.target.x - snapPreview.mover.x, dy = snapPreview.target.y - snapPreview.mover.y;
+                draggedVertices.forEach(p => { p.x += dx; p.y += dy; });
+            } else if (document.getElementById('snap-grid').checked && !draggedLabel) {
+                const g = parseInt(document.getElementById('grid-size').value);
+                draggedVertices.forEach(p => { p.x = Math.round(p.x/g)*g; p.y = Math.round(p.y/g)*g; });
+            }
+            saveState();
+        }
+        isDragging = isPanning = false; snapPreview = null; draggedLabel = null; renderCanvasOnly();
+    });
+
+    canvas.addEventListener('dblclick', e => {
+        const m = getMousePos(e), tolerance = 12 / scale;
+        if (activeIdx !== -1 && polygons[activeIdx].pts.length < 3) {
+             polygons[activeIdx].pts.push({x: m.x, y: m.y}); render(); saveState(); return;
+        }
+        let onEdge = false;
+        for (let i = 0; i < polygons.length; i++) {
+            const poly = polygons[i];
+            for (let j = 0; j < poly.pts.length; j++) {
+                const p1 = poly.pts[j], p2 = poly.pts[(j + 1) % poly.pts.length];
+                if (Titan.distToSegment(m, p1, p2) < tolerance) { activeIdx = i; poly.pts.splice(j + 1, 0, {x: m.x, y: m.y}); onEdge = true; break; }
+            }
+            if (onEdge) break;
+        }
+        if (!onEdge) { polygons.push({ name: `Polygon ${polygons.length + 1}`, pts: [{x: m.x, y: m.y}] }); activeIdx = polygons.length - 1; }
+        render(); saveState();
+    });
+
+    function drawMeasurements(poly, idx) {
+        const isActive = (idx === activeIdx); ctx.save();
+        if (!isActive) ctx.globalAlpha = 0.3;
+        poly.pts.forEach((p, i) => {
+            if (poly.pts.length > 1) {
+                const next = poly.pts[(i + 1) % poly.pts.length], prev = poly.pts[(i - 1 + poly.pts.length) % poly.pts.length];
+                if (i < poly.pts.length - 1 || poly.pts.length > 2) {
+                    const d = Math.hypot(next.x - p.x, next.y - p.y).toFixed(0);
+                    const off = (poly.dimOffsets && poly.dimOffsets[i]) ? poly.dimOffsets[i] : {x:0, y:0};
+                    const midX = (p.x + next.x) / 2 + off.x, midY = (p.y + next.y) / 2 + off.y;
+                    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(midX - 25/scale, midY - 18/scale, 50/scale, 14/scale);
+                    ctx.fillStyle = "#fbbf24"; ctx.font = `bold ${11/scale}px Arial`; ctx.textAlign = "center";
+                    ctx.fillText(d + "mm", midX, midY - 8/scale);
+                    labelHitboxes.push({x: midX - 25/scale, y: midY - 18/scale, w: 50/scale, h: 14/scale, polyIdx: idx, ptIdx: i, type: 'dim'});
+                }
+                if (poly.pts.length > 2) {
+                    const ang = Titan.getAngleData(prev, p, next, poly.pts), labelMid = ang.start + ang.sweep/2;
+                    const off = (poly.angOffsets && poly.angOffsets[i]) ? poly.angOffsets[i] : {x:0, y:0};
+                    const lx = p.x + Math.cos(labelMid) * (35/scale) + off.x, ly = p.y + Math.sin(labelMid) * (35/scale) + off.y;
+                    ctx.strokeStyle = isActive ? "rgba(0,255,65,0.6)" : "rgba(255,255,255,0.2)";
+                    ctx.lineWidth = 1.5/scale; ctx.beginPath(); ctx.arc(p.x, p.y, 22/scale, ang.start, ang.start + ang.sweep, ang.sweep < 0); ctx.stroke();
+                    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(lx - 20/scale, ly - 8/scale, 40/scale, 12/scale);
+                    ctx.fillStyle = "#fff"; ctx.font = `${10/scale}px Arial`; ctx.textAlign = "center";
+                    ctx.fillText(Math.abs(ang.sweep*180/Math.PI).toFixed(1)+"°", lx, ly + 2/scale);
+                    labelHitboxes.push({x: lx - 20/scale, y: ly - 8/scale, w: 40/scale, h: 12/scale, polyIdx: idx, ptIdx: i, type: 'ang'});
+                }
+            }
+        }); ctx.restore();
+    }
+
+    function renderCanvasOnly() {
+        labelHitboxes = []; const isCreating = (activeIdx !== -1 && polygons[activeIdx].pts.length < 3);
+        ctx.save(); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
+        const g = parseInt(document.getElementById('grid-size').value) || 50; ctx.strokeStyle = '#111'; ctx.lineWidth = 1/scale;
+        for(let i=-5000; i<=5000; i+=g) { ctx.beginPath(); ctx.moveTo(i,-5000); ctx.lineTo(i,5000); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-5000,i); ctx.lineTo(5000,i); ctx.stroke(); }
+        let totalA = 0;
+        polygons.forEach((poly, idx) => {
+            const area = Titan.calcArea(poly.pts); totalA += area;
+            const listAreaEl = document.getElementById(`poly-area-${idx}`);
+            if(listAreaEl) listAreaEl.innerText = `${area.toFixed(3)} m²`;
+            ctx.beginPath(); ctx.moveTo(poly.pts[0].x, poly.pts[0].y);
+            poly.pts.forEach(p => ctx.lineTo(p.x, p.y));
+            if(poly.pts.length > 2) {
+                ctx.closePath(); ctx.fillStyle = idx === activeIdx ? "rgba(0,255,65,0.1)" : (isCreating ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)"); ctx.fill();
+                let center = Titan.getCenter(poly.pts); ctx.fillStyle = "#fff"; ctx.font = `bold ${14/scale}px Arial`; ctx.textAlign = "center"; ctx.fillText(poly.name, center.x, center.y);
+                ctx.fillStyle = "var(--accent)"; ctx.font = `bold ${11/scale}px Arial`; ctx.fillText(`${area.toFixed(3)} m²`, center.x, center.y + (16/scale));
+            }
+            ctx.strokeStyle = idx === activeIdx ? "#00ff41" : (isCreating ? "#333" : "#555");
+            ctx.lineWidth = (idx === activeIdx ? 2 : 1)/scale; ctx.stroke();
+            poly.pts.forEach(p => { ctx.fillStyle = idx === activeIdx ? "#fff" : "#444"; ctx.beginPath(); ctx.arc(p.x, p.y, 4/scale, 0, Math.PI*2); ctx.fill(); });
+            drawMeasurements(poly, idx);
+        });
+        if(snapPreview) { ctx.strokeStyle = "#00ff41"; ctx.setLineDash([5/scale, 5/scale]); ctx.beginPath(); ctx.arc(snapPreview.target.x, snapPreview.target.y, 10/scale, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]); }
+        ctx.restore(); document.getElementById('hud-area').innerText = `TOTAL AREA: ${totalA.toFixed(3)} m²`; document.getElementById('hud-zoom').innerText = `ZOOM: ${(scale*100).toFixed(0)}%`;
+    }
+
+    function render() {
+        listEl.innerHTML = ''; 
+        polygons.forEach((poly, idx) => {
+            const area = Titan.calcArea(poly.pts), item = document.createElement('div');
+            item.className = `poly-item ${idx === activeIdx ? 'active' : ''}`;
+            item.onclick = (e) => { if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && !e.target.classList.contains('reset-label-link')) { activeIdx = idx; render(); } };
+            const input = document.createElement('input'); input.className = 'name-input'; input.value = poly.name;
+            input.oninput = (e) => { poly.name = e.target.value; renderCanvasOnly(); saveState(); };
+            const areaDiv = document.createElement('div'); areaDiv.id = `poly-area-${idx}`;
+            areaDiv.style = "font-size:0.75rem; color:var(--accent); margin-top:5px; font-weight:bold;";
+            areaDiv.innerText = `${area.toFixed(3)} m²`; 
+            const resetBtn = document.createElement('div');
+            resetBtn.className = 'reset-label-link'; resetBtn.innerText = '[ RESET LABELS ]';
+            resetBtn.onclick = (e) => { e.stopPropagation(); poly.dimOffsets = {}; poly.angOffsets = {}; renderCanvasOnly(); saveState(); };
+            item.appendChild(input); item.appendChild(areaDiv); item.appendChild(resetBtn);
+            listEl.appendChild(item);
+        });
+        renderCanvasOnly();
+    }
+
+    canvas.addEventListener('wheel', e => {
+        e.preventDefault(); const oldS = scale; scale *= (1 - e.deltaY * 0.001); scale = Math.min(Math.max(0.1, scale), 5);
+        offset.x -= (e.clientX - offset.x) * (scale / oldS - 1); offset.y -= (e.clientY - offset.y) * (scale / oldS - 1); renderCanvasOnly();
+    }, { passive: false });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        if (e.key === 'Delete' || e.key === 'Backspace') { if (activeIdx !== -1) { polygons.splice(activeIdx, 1); activeIdx = -1; render(); saveState(); } }
+    });
+
+    function resetProject() { if(confirm("Clear project?")) { polygons=[]; activeIdx=-1; window.location.hash = ''; render(); } }
+    window.onresize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; render(); };
+    
+    // Boot sequence
+    window.onload = () => {
+        loadState();
+        window.onresize();
+    };
+</script>
+</body>
+</html>
