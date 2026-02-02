@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>OP VECTOR-X Version 0.1</title>
+    <title>OP VECTOR-X Version 0.1a</title>
     <style>
-        :root { --bg: #0d1117; --card: #161b22; --accent: #00ff41; --gold: #fbbf24; --text: #c9d1d9; --border: #30363d; --danger: #ef4444; }
+        :root { --bg: #0d1117; --card: #161b22; --accent: #00ff41; --gold: #fbbf24; --text: #c9d1d9; --border: #30363d; --danger: #ef4444; --secondary: #30363d; }
         body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
         aside { width: 340px; background: #010409; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; z-index: 10; box-sizing: border-box; overflow-y: auto; }
         main { flex: 1; position: relative; background: #000; overflow: hidden; }
@@ -14,17 +14,19 @@
         input[type="number"], .name-input { width: 100%; background: #0d1117; border: 1px solid var(--border); color: #fff; padding: 8px; border-radius: 4px; box-sizing: border-box; }
         button { width: 100%; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; transition: 0.2s; }
         .btn-reset { background: var(--danger); color: #fff; font-size: 0.7rem; }
+        .btn-undo { background: var(--secondary); color: #fff; font-size: 0.7rem; margin-top: 15px; border: 1px solid #444; }
+        .btn-undo:hover { background: #444; }
         #poly-list { margin-top: 5px; flex-grow: 1; }
         .poly-item { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer; position: relative; }
         .poly-item.active { border-color: var(--accent); background: rgba(0, 255, 65, 0.08); }
         .name-input { font-weight: bold; font-size: 0.85rem; border: none; background: transparent; color: #fff; width: 100%; outline: none; }
         .hud { position: absolute; bottom: 20px; right: 20px; background: rgba(13, 20, 30, 0.9); border: 1px solid var(--accent); padding: 12px; border-radius: 4px; pointer-events: none; font-family: monospace; font-size: 0.8rem; }
         .switch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 0.7rem; color: #8b949e; cursor: pointer; user-select: none; }
+        .size-ctrl { display: flex; align-items: center; justify-content: space-between; background: #0d1117; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); margin-bottom: 8px; }
+        .size-btn { width: 24px; padding: 2px; margin: 0; background: #30363d; color: white; font-size: 1rem; line-height: 1; }
         .reset-label-link { font-size: 0.6rem; color: var(--gold); text-decoration: underline; cursor: pointer; margin-top: 8px; display: inline-block; }
-        
         .btn-help-toggle { background: rgba(0, 255, 65, 0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 0.75rem; margin-bottom: 20px; letter-spacing: 1px; }
         .btn-help-toggle:hover { background: var(--accent); color: #000; }
-        
         #help-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: var(--card); border: 2px solid var(--accent); padding: 30px; border-radius: 12px; z-index: 100; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
         .instruction-step { font-size: 0.8rem; color: var(--text); margin-bottom: 15px; line-height: 1.4; border-left: 2px solid var(--accent); padding-left: 12px; }
         kbd { background: #333; padding: 2px 4px; border-radius: 3px; font-size: 0.7rem; color: var(--accent); border: 1px solid #444; }
@@ -38,6 +40,7 @@
         <div class="instruction-step"><strong>3. MOVE:</strong> <kbd>DRAG</kbd> polygon centers. Shared corners stay "Glued".</div>
         <div class="instruction-step"><strong>4. VALUES:</strong> <kbd>DRAG</kbd> any measurement value to move its position.</div>
         <div class="instruction-step"><strong>5. REMOVE:</strong> <kbd>CTRL + CLICK</kbd> a corner to delete it. Press <kbd>DEL</kbd> to delete active polygon.</div>
+        <div class="instruction-step"><strong>6. UNDO:</strong> Press <kbd>CTRL + Z</kbd> to revert last action.</div>
         <button onclick="toggleHelp()">CLOSE HELP [X]</button>
     </div>
 
@@ -49,11 +52,27 @@
             <label>Settings</label>
             <div style="margin-bottom: 12px;">
                 <label>GRID SIZE (mm)</label>
-                <input type="number" id="grid-size" value="50" onchange="render()">
+                <input type="number" id="grid-size" value="50" onchange="render(); saveState();">
             </div>
             <label class="switch-row"><input type="checkbox" id="osnap-enabled" onchange="saveState()"><span>OSNAP (MAGNET)</span></label>
             <label class="switch-row"><input type="checkbox" id="glue-enabled" onchange="saveState()"><span>STICKY JOINTS (GLUE)</span></label>
-            <label class="switch-row"><input type="checkbox" id="snap-grid" onchange="render()"><span>SNAP TO GRID</span></label>
+            <label class="switch-row"><input type="checkbox" id="snap-grid" onchange="render(); saveState();"><span>SNAP TO GRID</span></label>
+            
+            <label>DIMENSION SCALE</label>
+            <div class="size-ctrl">
+                <button class="size-btn" onclick="adjSize('dim',-1)">-</button>
+                <span id="dim-size-val">11</span>
+                <button class="size-btn" onclick="adjSize('dim',1)">+</button>
+            </div>
+            
+            <label>ANGULAR SCALE</label>
+            <div class="size-ctrl">
+                <button class="size-btn" onclick="adjSize('ang',-1)">-</button>
+                <span id="ang-size-val">10</span>
+                <button class="size-btn" onclick="adjSize('ang',1)">+</button>
+            </div>
+
+            <button class="btn-undo" onclick="undo()">UNDO [Ctrl+Z]</button>
             <button class="btn-reset" onclick="resetProject()">RESET PROJECT</button>
         </div>
         <label>Polygon Inventory</label>
@@ -76,29 +95,70 @@
     let scale = 1.0, offset = { x: 0, y: 0 };
     let draggedVertices = [], draggedLabel = null, isDragging = false, isPanning = false, lastMouse = { x: 0, y: 0 }, snapPreview = null;
     let labelHitboxes = [];
+    let dimSize = 11, angSize = 10;
+    
+    let history = [];
 
-    // --- SHARED STATE LOGIC ---
-    function saveState() {
-        const state = {
-            p: polygons,
+    function adjSize(type, delta) {
+        if(type === 'dim') { dimSize = Math.max(6, dimSize + delta); document.getElementById('dim-size-val').innerText = dimSize; }
+        else { angSize = Math.max(6, angSize + delta); document.getElementById('ang-size-val').innerText = angSize; }
+        renderCanvasOnly(); saveState();
+    }
+
+    function saveState(isUndoAction = false) {
+        const stateData = {
+            p: JSON.parse(JSON.stringify(polygons)),
             g: document.getElementById('grid-size').value,
             o: document.getElementById('osnap-enabled').checked,
             l: document.getElementById('glue-enabled').checked,
-            s: document.getElementById('snap-grid').checked
+            s: document.getElementById('snap-grid').checked,
+            ds: dimSize,
+            as: angSize,
+            ai: activeIdx
         };
-        const encoded = btoa(JSON.stringify(state));
+        if (!isUndoAction) {
+            history.push(JSON.stringify(stateData));
+            if (history.length > 50) history.shift();
+        }
+        const encoded = btoa(JSON.stringify(stateData));
         window.history.replaceState(null, '', '#' + encoded);
     }
 
+    function undo() {
+        if (history.length <= 1) return;
+        history.pop(); 
+        const prevState = JSON.parse(history[history.length - 1]);
+        applyState(prevState);
+        
+        // Fix: Clean up creation mode if poly was deleted or empty
+        if (activeIdx !== -1 && (!polygons[activeIdx] || polygons[activeIdx].pts.length === 0)) {
+            if (polygons[activeIdx] && polygons[activeIdx].pts.length === 0) polygons.splice(activeIdx, 1);
+            activeIdx = -1;
+        }
+        
+        saveState(true); 
+        render();
+    }
+
+    function applyState(data) {
+        polygons = data.p || [];
+        document.getElementById('grid-size').value = data.g || 50;
+        document.getElementById('osnap-enabled').checked = data.o || false;
+        document.getElementById('glue-enabled').checked = data.l || false;
+        document.getElementById('snap-grid').checked = data.s || false;
+        dimSize = data.ds || 11;
+        angSize = data.as || 10;
+        activeIdx = (data.ai !== undefined) ? data.ai : -1;
+        document.getElementById('dim-size-val').innerText = dimSize;
+        document.getElementById('ang-size-val').innerText = angSize;
+    }
+
     function loadState() {
-        if (!window.location.hash) return;
+        if (!window.location.hash) { saveState(); return; }
         try {
             const decoded = JSON.parse(atob(window.location.hash.substring(1)));
-            polygons = decoded.p || [];
-            document.getElementById('grid-size').value = decoded.g || 50;
-            document.getElementById('osnap-enabled').checked = decoded.o || false;
-            document.getElementById('glue-enabled').checked = decoded.l || false;
-            document.getElementById('snap-grid').checked = decoded.s || false;
+            applyState(decoded);
+            history.push(JSON.stringify(decoded));
         } catch(e) { console.error("Load failed", e); }
     }
 
@@ -157,7 +217,7 @@
         const m = getMousePos(e); lastMouse = { x: e.clientX, y: e.clientY };
         const hit = 15 / scale;
         let found = false; draggedVertices = []; draggedLabel = null;
-        const isCreating = (activeIdx !== -1 && polygons[activeIdx].pts.length < 3);
+        const isCreating = (activeIdx !== -1 && polygons[activeIdx] && polygons[activeIdx].pts.length < 3);
 
         if (e.ctrlKey) {
             for(let i=0; i<polygons.length; i++) {
@@ -277,7 +337,7 @@
 
     canvas.addEventListener('dblclick', e => {
         const m = getMousePos(e), tolerance = 12 / scale;
-        if (activeIdx !== -1 && polygons[activeIdx].pts.length < 3) {
+        if (activeIdx !== -1 && polygons[activeIdx] && polygons[activeIdx].pts.length < 3) {
              polygons[activeIdx].pts.push({x: m.x, y: m.y}); render(); saveState(); return;
         }
         let onEdge = false;
@@ -303,10 +363,11 @@
                     const d = Math.hypot(next.x - p.x, next.y - p.y).toFixed(0);
                     const off = (poly.dimOffsets && poly.dimOffsets[i]) ? poly.dimOffsets[i] : {x:0, y:0};
                     const midX = (p.x + next.x) / 2 + off.x, midY = (p.y + next.y) / 2 + off.y;
-                    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(midX - 25/scale, midY - 18/scale, 50/scale, 14/scale);
-                    ctx.fillStyle = "#fbbf24"; ctx.font = `bold ${11/scale}px Arial`; ctx.textAlign = "center";
-                    ctx.fillText(d + "mm", midX, midY - 8/scale);
-                    labelHitboxes.push({x: midX - 25/scale, y: midY - 18/scale, w: 50/scale, h: 14/scale, polyIdx: idx, ptIdx: i, type: 'dim'});
+                    const bw = (d.length * dimSize * 0.7) / scale, bh = (dimSize * 1.6) / scale;
+                    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(midX - bw/2, midY - bh, bw, bh * 0.8);
+                    ctx.fillStyle = "#fbbf24"; ctx.font = `bold ${dimSize/scale}px Arial`; ctx.textAlign = "center";
+                    ctx.fillText(d + "mm", midX, midY - bh * 0.3);
+                    labelHitboxes.push({x: midX - bw/2, y: midY - bh, w: bw, h: bh * 0.8, polyIdx: idx, ptIdx: i, type: 'dim'});
                 }
                 if (poly.pts.length > 2) {
                     const ang = Titan.getAngleData(prev, p, next, poly.pts), labelMid = ang.start + ang.sweep/2;
@@ -314,25 +375,25 @@
                     const lx = p.x + Math.cos(labelMid) * (35/scale) + off.x, ly = p.y + Math.sin(labelMid) * (35/scale) + off.y;
                     ctx.strokeStyle = isActive ? "rgba(0,255,65,0.6)" : "rgba(255,255,255,0.2)";
                     ctx.lineWidth = 1.5/scale; ctx.beginPath(); ctx.arc(p.x, p.y, 22/scale, ang.start, ang.start + ang.sweep, ang.sweep < 0); ctx.stroke();
-                    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(lx - 20/scale, ly - 8/scale, 40/scale, 12/scale);
-                    ctx.fillStyle = "#fff"; ctx.font = `${10/scale}px Arial`; ctx.textAlign = "center";
-                    ctx.fillText(Math.abs(ang.sweep*180/Math.PI).toFixed(1)+"°", lx, ly + 2/scale);
-                    labelHitboxes.push({x: lx - 20/scale, y: ly - 8/scale, w: 40/scale, h: 12/scale, polyIdx: idx, ptIdx: i, type: 'ang'});
+                    const txt = Math.abs(ang.sweep*180/Math.PI).toFixed(1)+"°";
+                    const bw = (txt.length * angSize * 0.7) / scale, bh = (angSize * 1.5) / scale;
+                    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(lx - bw/2, ly - bh/2, bw, bh);
+                    ctx.fillStyle = "#fff"; ctx.font = `${angSize/scale}px Arial`; ctx.textAlign = "center";
+                    ctx.fillText(txt, lx, ly + bh * 0.25);
+                    labelHitboxes.push({x: lx - bw/2, y: ly - bh/2, w: bw, h: bh, polyIdx: idx, ptIdx: i, type: 'ang'});
                 }
             }
         }); ctx.restore();
     }
 
     function renderCanvasOnly() {
-        labelHitboxes = []; const isCreating = (activeIdx !== -1 && polygons[activeIdx].pts.length < 3);
+        labelHitboxes = []; const isCreating = (activeIdx !== -1 && polygons[activeIdx] && polygons[activeIdx].pts.length < 3);
         ctx.save(); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
         const g = parseInt(document.getElementById('grid-size').value) || 50; ctx.strokeStyle = '#111'; ctx.lineWidth = 1/scale;
         for(let i=-5000; i<=5000; i+=g) { ctx.beginPath(); ctx.moveTo(i,-5000); ctx.lineTo(i,5000); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-5000,i); ctx.lineTo(5000,i); ctx.stroke(); }
         let totalA = 0;
         polygons.forEach((poly, idx) => {
             const area = Titan.calcArea(poly.pts); totalA += area;
-            const listAreaEl = document.getElementById(`poly-area-${idx}`);
-            if(listAreaEl) listAreaEl.innerText = `${area.toFixed(3)} m²`;
             ctx.beginPath(); ctx.moveTo(poly.pts[0].x, poly.pts[0].y);
             poly.pts.forEach(p => ctx.lineTo(p.x, p.y));
             if(poly.pts.length > 2) {
@@ -357,9 +418,8 @@
             item.onclick = (e) => { if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && !e.target.classList.contains('reset-label-link')) { activeIdx = idx; render(); } };
             const input = document.createElement('input'); input.className = 'name-input'; input.value = poly.name;
             input.oninput = (e) => { poly.name = e.target.value; renderCanvasOnly(); saveState(); };
-            const areaDiv = document.createElement('div'); areaDiv.id = `poly-area-${idx}`;
+            const areaDiv = document.createElement('div'); areaDiv.innerText = `${area.toFixed(3)} m²`; 
             areaDiv.style = "font-size:0.75rem; color:var(--accent); margin-top:5px; font-weight:bold;";
-            areaDiv.innerText = `${area.toFixed(3)} m²`; 
             const resetBtn = document.createElement('div');
             resetBtn.className = 'reset-label-link'; resetBtn.innerText = '[ RESET LABELS ]';
             resetBtn.onclick = (e) => { e.stopPropagation(); poly.dimOffsets = {}; poly.angOffsets = {}; renderCanvasOnly(); saveState(); };
@@ -376,17 +436,13 @@
 
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT') return;
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
         if (e.key === 'Delete' || e.key === 'Backspace') { if (activeIdx !== -1) { polygons.splice(activeIdx, 1); activeIdx = -1; render(); saveState(); } }
     });
 
-    function resetProject() { if(confirm("Clear project?")) { polygons=[]; activeIdx=-1; window.location.hash = ''; render(); } }
+    function resetProject() { if(confirm("Clear project?")) { polygons=[]; activeIdx=-1; history=[]; window.location.hash = ''; saveState(); render(); } }
     window.onresize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; render(); };
-    
-    // Boot sequence
-    window.onload = () => {
-        loadState();
-        window.onresize();
-    };
+    window.onload = () => { loadState(); window.onresize(); };
 </script>
 </body>
 </html>
